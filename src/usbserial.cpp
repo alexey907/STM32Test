@@ -297,7 +297,7 @@ void UsbSerial::begin() {
     /* ---- Step 1: Enable USB clock ---- */
     __HAL_RCC_USB_CLK_ENABLE();
     
-    /* ---- Step 2: PA12 as push-pull to drive USB DP pull-up (1.5kΩ to 3.3V) ---- */
+    /* ---- Step 2: Simulate USB Disconnect ---- */
     __HAL_RCC_GPIOA_CLK_ENABLE();
     GPIO_InitTypeDef gpio = {};
     gpio.Pin   = GPIO_PIN_12;
@@ -305,10 +305,19 @@ void UsbSerial::begin() {
     gpio.Pull  = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOA, &gpio);
-    /* Pull PA12 LOW to enable USB DP pull-up (P-channel MOSFET circuit on BluePill) */
+    /* Drive PA12 LOW to signal disconnect to the host */
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
-    
-    /* Small delay for host to detect pull-up */
+    vTaskDelay(pdMS_TO_TICKS(10)); // 10ms is plenty for the host to notice
+
+    /* CRITICAL: Release PA12 back to floating input!
+     * If left as an output, the GPIO actively fights the USB transceiver,
+     * mangling data packets and causing a continuous USB reset (SE0) storm
+     * that starves the FreeRTOS scheduler. */
+    gpio.Mode = GPIO_MODE_INPUT;
+    gpio.Pull = GPIO_NOPULL;
+    HAL_GPIO_Init(GPIOA, &gpio);
+
+    /* Let the host process the reconnect */
     vTaskDelay(pdMS_TO_TICKS(100));
     
     /* ---- Step 3: Configure PCD (USB peripheral) ---- */
