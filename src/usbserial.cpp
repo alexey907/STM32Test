@@ -367,9 +367,21 @@ USBD_StatusTypeDef USBD_LL_Init(USBD_HandleTypeDef *pdev) {
     PCD_HandleTypeDef *hpcd = _pdev_to_hpcd(pdev);
     hpcd->pData = pdev;
     HAL_PCD_Init(hpcd);
+    
+    /* ---- F103 PMA (Packet Memory Area) allocation ---- */
+    /* The F103 USB peripheral uses a dedicated 512-byte hardware buffer.
+     * HAL_PCDEx_PMAConfig maps logical endpoint addresses to physical
+     * PMA offsets. Without this, USB interrupts write to address 0x00
+     * causing an instant Hard Fault. */
+    HAL_PCDEx_PMAConfig(hpcd, 0x00, PCD_SNG_BUF, 0x18);   // EP0 OUT (RX)
+    HAL_PCDEx_PMAConfig(hpcd, 0x80, PCD_SNG_BUF, 0x58);   // EP0 IN  (TX)
+    HAL_PCDEx_PMAConfig(hpcd, 0x81, PCD_SNG_BUF, 0xC0);   // EP1 IN  (Bulk TX to host)
+    HAL_PCDEx_PMAConfig(hpcd, 0x01, PCD_SNG_BUF, 0x110);  // EP1 OUT (Bulk RX from host)
+    HAL_PCDEx_PMAConfig(hpcd, 0x82, PCD_SNG_BUF, 0x100);  // EP2 IN  (Interrupt)
+    
     /* Enable USB IRQ */
-    HAL_NVIC_SetPriority(USB_LP_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(USB_LP_IRQn);
+    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
     return USBD_OK;
 }
 
