@@ -39,11 +39,30 @@ void SystemClock_Config(void) {
 // TinyUSB Background Task — processes USB state machine
 void UsbDeviceTask(void *argument) {
     (void)argument;
+
+    // 1. Force Windows to re-enumerate — Blue Pill has a hardwired D+ pull-up.
+    //    Driving PA12 low for 10ms drops the USB connection so the host sees a
+    //    clean disconnect, then releasing it starts a fresh handshake.
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin = GPIO_PIN_12;
+    gpio.Mode = GPIO_MODE_OUTPUT_PP;
+    HAL_GPIO_Init(GPIOA, &gpio);
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
+    vTaskDelay(pdMS_TO_TICKS(10));
+    gpio.Mode = GPIO_MODE_INPUT;   // Release D+ back to high-Z
+    HAL_GPIO_Init(GPIOA, &gpio);
+    vTaskDelay(pdMS_TO_TICKS(50));
+
+    // 2. Lower USB interrupt priority so FreeRTOS API calls are legal inside ISR.
+    //    STM32 NVIC defaults to priority 0 (max); FreeRTOS requires ≤ configMAX_SYSCALL_INTERRUPT_PRIORITY (5).
+    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
+
+    // 3. Initialize TinyUSB stack
     tusb_init();
 
     for (;;) {
-        tud_task();
-        vTaskDelay(pdMS_TO_TICKS(1));
+        tud_task();   // tud_task_ext(INFINITE, false) — blocks until event arrives
     }
 }
 
@@ -100,6 +119,7 @@ static const char *string_desc_arr[] = {
     "BoatTest",                       // 1: Manufacturer
     "BluePill CDC",                   // 2: Product
     "123456",                         // 3: Serial Number
+    "CDC Interface",                  // 4: CDC interface string (used by TUD_CDC_DESCRIPTOR)
 };
 
 // Device descriptor
