@@ -1,4 +1,6 @@
 #include "usbserial.h"
+#include "FreeRTOS.h"
+#include "task.h"
 
 /* ==================================================================
  * USB Descriptor Tables (ROM)
@@ -296,7 +298,7 @@ void UsbSerial::begin() {
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
     
     /* Small delay for host to detect pull-up */
-    HAL_Delay(100);
+    vTaskDelay(pdMS_TO_TICKS(100));
     
     /* ---- Step 3: Configure PCD (USB peripheral) ---- */
     _hpcd.Instance = USB;

@@ -42,8 +42,6 @@ int main(void) {
     HAL_Init();
     SystemClock_Config();
     MX_GPIO_Init();
-    usb.begin();
-
     // Create FreeRTOS Task
     xTaskCreate(StartBlinkTask, "Blink", 128, NULL, 1, NULL);
 
@@ -67,6 +65,10 @@ void vApplicationMallocFailedHook(void) {
 
 void StartBlinkTask(void *argument) {
     (void)argument;
+    
+    // Initialize USB *after* the scheduler has started
+    usb.begin();
+    
     for(;;) {
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
         //usb.println("LED toggled");

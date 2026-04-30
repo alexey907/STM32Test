@@ -8,8 +8,12 @@ extern "C" {
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f1xx_hal.h"
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <stdint.h>
+
+/* Forward-declare FreeRTOS allocator (avoid pulling FreeRTOS.h into framework USB core) */
+extern void *pvPortMalloc(size_t xWantedSize);
+extern void vPortFree(void *pv);
 #define USBD_MAX_NUM_INTERFACES               2U
 #define USBD_MAX_NUM_CONFIGURATION            1U
 #define USBD_MAX_STR_DESC_SIZ                 0x100U
@@ -17,9 +21,9 @@ extern "C" {
 #define USBD_SELF_POWERED                     1U
 #define USBD_DEBUG_LEVEL                      0U
 
-/* Memory management macros */
-#define USBD_malloc               malloc
-#define USBD_free                 free
+/* Memory management macros — use FreeRTOS heap (standard malloc is 0 bytes on this target) */
+#define USBD_malloc               pvPortMalloc
+#define USBD_free                 vPortFree
 #define USBD_memset               memset
 #define USBD_memcpy               memcpy
 
