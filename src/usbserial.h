@@ -73,6 +73,7 @@ private:
     USBD_DescriptorsTypeDef _desc;
     
     uint8_t  _tx_buf[64];
+    uint8_t  _rx_buf[64];
     bool     _connected;
     
     /* Static C-callbacks required by STM32 middleware */

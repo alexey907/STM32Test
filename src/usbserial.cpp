@@ -120,7 +120,13 @@ uint8_t *GetInterfaceStrDescriptor(USBD_SpeedTypeDef speed, uint16_t *length) {
 UsbSerial* UsbSerial::_instance = nullptr;
 
 int8_t UsbSerial::_InitCb(void) {
-    if (_instance) _instance->_connected = true;
+    if (_instance) {
+        _instance->_connected = true;
+        // Arm BOTH the TX and RX endpoints
+        USBD_CDC_SetTxBuffer(&_instance->_usbd, _instance->_tx_buf, 0);
+        USBD_CDC_SetRxBuffer(&_instance->_usbd, _instance->_rx_buf);
+        USBD_CDC_ReceivePacket(&_instance->_usbd);
+    }
     return 0;
 }
 
@@ -162,6 +168,11 @@ int8_t UsbSerial::_ReceiveCb(uint8_t* buf, uint32_t* len) {
     // Just acknowledge reception
     (void)buf;
     (void)len;
+    if (_instance) {
+        // Re-arm the endpoint to receive the next packet from Windows
+        USBD_CDC_SetRxBuffer(&_instance->_usbd, _instance->_rx_buf);
+        USBD_CDC_ReceivePacket(&_instance->_usbd);
+    }
     return 0;
 }
 
@@ -326,7 +337,14 @@ void UsbSerial::println(const char* str) {
     if (_usbd.dev_state != USBD_STATE_CONFIGURED) return;
     
     USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)_usbd.pClassData;
-    if (hcdc->TxState != 0) return; // Busy
+    
+    // Wait for previous transfer, but give up after 50ms so the task doesn't freeze
+    uint32_t timeout = 50;
+    while (hcdc->TxState != 0 && timeout > 0) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+        timeout--;
+    }
+    if (hcdc->TxState != 0) return; // Host isn't listening, safely drop the log
     
     // Copy string + CRLF into temp buffer
     uint32_t len = 0;
@@ -346,7 +364,14 @@ void UsbSerial::println() {
     if (_usbd.dev_state != USBD_STATE_CONFIGURED) return;
     
     USBD_CDC_HandleTypeDef *hcdc = (USBD_CDC_HandleTypeDef*)_usbd.pClassData;
-    if (hcdc->TxState != 0) return;
+    
+    // Wait for previous transfer, but give up after 50ms so the task doesn't freeze
+    uint32_t timeout = 50;
+    while (hcdc->TxState != 0 && timeout > 0) {
+        vTaskDelay(pdMS_TO_TICKS(1));
+        timeout--;
+    }
+    if (hcdc->TxState != 0) return; // Host isn't listening, safely drop the log
     
     _tx_buf[0] = '\r';
     _tx_buf[1] = '\n';
