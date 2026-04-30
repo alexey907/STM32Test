@@ -86,26 +86,33 @@ void USBSerial::task(void *argument) {
     // 1. FreeRTOS-compatible priority grouping (required by STM32 HAL)
     HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
 
-    // 2. Power on USB peripheral clock
-    __HAL_RCC_USB_CLK_ENABLE();
+    // 2. FORCE HARDWARE DISCONNECT FIRST (while USB peripheral is completely OFF)
+    //    This gives Windows enough time to forcibly kill any open terminal handles.
+    __HAL_RCC_GPIOA_CLK_ENABLE();
+    GPIO_InitTypeDef gpio = {0};
+    gpio.Pin   = GPIO_PIN_12;
+    gpio.Mode  = GPIO_MODE_OUTPUT_PP;
+    gpio.Pull  = GPIO_NOPULL;
+    gpio.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(GPIOA, &gpio);
 
-    // 3. Arm the TinyUSB state machine and interrupt
+    // Drive D+ LOW to simulate physical unplug
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
+
+    // CRITICAL: 300 ms is required for Windows to drop active terminal connections
+    vTaskDelay(pdMS_TO_TICKS(300));
+
+    // Release D+ line back to the pull-up resistor — Windows sees the "plug in" event
+    gpio.Mode = GPIO_MODE_INPUT;
+    HAL_GPIO_Init(GPIOA, &gpio);
+
+    // 3. NOW power on the USB peripheral and arm TinyUSB
+    __HAL_RCC_USB_CLK_ENABLE();
     HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
     tusb_init();
 
-    // 4. Force re-enumeration via PA12 (Blue Pill's hardwired 1.5k pull-up)
-    __HAL_RCC_GPIOA_CLK_ENABLE();
-    GPIO_InitTypeDef gpio = {0};
-    gpio.Pin = GPIO_PIN_12;
-    gpio.Mode = GPIO_MODE_OUTPUT_PP;
-    HAL_GPIO_Init(GPIOA, &gpio);
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
-    vTaskDelay(pdMS_TO_TICKS(100));
-    gpio.Mode = GPIO_MODE_INPUT;
-    HAL_GPIO_Init(GPIOA, &gpio);
-
-    // 5. Pump the TinyUSB state machine forever
+    // 4. Pump the TinyUSB state machine forever
     for (;;) {
         tud_task();
     }
