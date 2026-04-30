@@ -1,10 +1,28 @@
 #include "usbserial.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include <string.h>
 
 /* ==================================================================
  * USB Descriptor Tables (ROM)
  * ================================================================== */
+
+/* Default line coding: 115200 8N1 — echoed back to Windows to satisfy handshake */
+static uint8_t _line_coding[7] = { 0x00, 0xC2, 0x01, 0x00, 0x00, 0x00, 0x08 };
+
+/* Statically allocate CDC class data so we NEVER run out of heap on replug.
+ * The ST middleware calls USBD_malloc/USBD_free during init/deinit.
+ * By using static memory, replugging the cable never fails. */
+static USBD_CDC_HandleTypeDef _cdc_class_data;
+
+extern "C" void* usb_malloc(size_t size) {
+    if (size <= sizeof(USBD_CDC_HandleTypeDef)) return &_cdc_class_data;
+    return NULL;
+}
+
+extern "C" void usb_free(void*) {
+    // Static allocation — nothing to free
+}
 
 /* USB Standard Device Descriptor */
 static const uint8_t _dev_desc[18] = {
@@ -139,18 +157,12 @@ int8_t UsbSerial::_ControlCb(uint8_t cmd, uint8_t* pbuf, uint16_t length) {
     (void)length;
     switch (cmd) {
     case CDC_SET_LINE_CODING:
-        // pbuf contains: uint32_t bitrate, uint8_t format, uint8_t paritytype, uint8_t datatype
-        // Just accept it silently
+        // Save what Windows asked for — echo it back on GET to satisfy handshake
+        memcpy(_line_coding, pbuf, 7);
         break;
     case CDC_GET_LINE_CODING:
-        // Return a default line coding
-        pbuf[0] = 0x80; // bps LSB
-        pbuf[1] = 0x25;
-        pbuf[2] = 0x00;
-        pbuf[3] = 0x00; // 9600 bps
-        pbuf[4] = 0x00; // 1 stop bit
-        pbuf[5] = 0x00; // no parity
-        pbuf[6] = 0x08; // 8 data bits
+        // Echo back whatever the host set (or default 115200 8N1)
+        memcpy(pbuf, _line_coding, 7);
         break;
     case CDC_SET_CONTROL_LINE_STATE:
         // pbuf[0] bit 0 = DTR, bit 1 = RTS

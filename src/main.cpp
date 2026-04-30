@@ -43,7 +43,7 @@ int main(void) {
     SystemClock_Config();
     MX_GPIO_Init();
     // Create FreeRTOS Task
-    xTaskCreate(StartBlinkTask, "Blink", 128, NULL, 1, NULL);
+    xTaskCreate(StartBlinkTask, "Blink", 512, NULL, 1, NULL);
 
     // Start Scheduler
     vTaskStartScheduler();

@@ -11,9 +11,9 @@ extern "C" {
 #include <string.h>
 #include <stdint.h>
 
-/* Forward-declare FreeRTOS allocator (avoid pulling FreeRTOS.h into framework USB core) */
-extern void *pvPortMalloc(size_t xWantedSize);
-extern void vPortFree(void *pv);
+/* Forward-declare custom static allocator (avoids FreeRTOS heap leak on USB replug) */
+extern void* usb_malloc(size_t size);
+extern void usb_free(void* ptr);
 #define USBD_MAX_NUM_INTERFACES               2U
 #define USBD_MAX_NUM_CONFIGURATION            1U
 #define USBD_MAX_STR_DESC_SIZ                 0x100U
@@ -21,9 +21,9 @@ extern void vPortFree(void *pv);
 #define USBD_SELF_POWERED                     1U
 #define USBD_DEBUG_LEVEL                      0U
 
-/* Memory management macros — use FreeRTOS heap (standard malloc is 0 bytes on this target) */
-#define USBD_malloc               pvPortMalloc
-#define USBD_free                 vPortFree
+/* Memory management macros — static allocation, immune to heap exhaustion on replug */
+#define USBD_malloc               usb_malloc
+#define USBD_free                 usb_free
 #define USBD_memset               memset
 #define USBD_memcpy               memcpy
 
