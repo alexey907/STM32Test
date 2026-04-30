@@ -5,19 +5,7 @@
 #include "task.h"
 #include "tusb.h"
 
-//--------------------------------------------------------------------+
-//  USB Descriptors
-//--------------------------------------------------------------------+
-
-static const char *string_desc_arr[] = {
-    (const char[]){0x09, 0x04},   // 0: English (0x0409)
-    "BoatTest",                    // 1: Manufacturer
-    "BluePill CDC",                // 2: Product
-    "123456",                      // 3: Serial Number
-    "CDC Interface",               // 4: CDC interface string
-};
-
-// Forward to the C-linkage thunks below
+// Forward declarations for C-linkage thunks
 extern "C" {
     uint8_t const *tud_descriptor_device_cb(void);
     uint8_t const *tud_descriptor_configuration_cb(uint8_t index);
@@ -26,7 +14,22 @@ extern "C" {
 }
 
 //--------------------------------------------------------------------+
-//  C-linkage TinyUSB callbacks
+//  Pre-built UTF-16LE string descriptors (header + payload)
+//--------------------------------------------------------------------+
+
+static const uint16_t *const string_desc_table[] = {
+    (const uint16_t[]){0x0304, 0x0409},                                                      // 0: English (0x0409)
+    (const uint16_t[]){0x0312, 'B', 'o', 'a', 't', 'T', 'e', 's', 't'},                     // 1: Manufacturer
+    (const uint16_t[]){0x031A, 'B', 'l', 'u', 'e', 'P', 'i', 'l', 'l', ' ', 'C', 'D', 'C'}, // 2: Product
+    (const uint16_t[]){0x030E, '1', '2', '3', '4', '5', '6'},                                // 3: Serial
+    (const uint16_t[]){0x031C, 'C', 'D', 'C', ' ', 'I', 'n', 't', 'e', 'r', 'f', 'a', 'c', 'e'}, // 4: Interface
+};
+
+static constexpr unsigned string_desc_count =
+    sizeof(string_desc_table) / sizeof(string_desc_table[0]);
+
+//--------------------------------------------------------------------+
+//  TinyUSB descriptor callbacks (C-linkage)
 //--------------------------------------------------------------------+
 
 extern "C" uint8_t const *tud_descriptor_device_cb(void) {
@@ -61,30 +64,8 @@ extern "C" uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
 
 extern "C" uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     (void)langid;
-    static uint16_t str_desc_buf[32];
-    uint8_t count;
-
-    if (index == 0) {
-        memcpy(&str_desc_buf[1], string_desc_arr[0], 2);
-        count = 1;
-    } else {
-        if (index >= sizeof(string_desc_arr) / sizeof(string_desc_arr[0]))
-            return NULL;
-
-        const char *str = string_desc_arr[index];
-        count = (uint8_t)strlen(str);
-
-        if (count > 31) count = 31;
-
-        for (uint8_t i = 0; i < count; i++) {
-            str_desc_buf[1 + i] = str[i];
-        }
-    }
-
-    str_desc_buf[0] = (uint16_t)((uint16_t)(TUSB_DESC_STRING << 8) |
-                                 (uint16_t)(2 * count + 2));
-
-    return str_desc_buf;
+    if (index >= string_desc_count) return NULL;
+    return string_desc_table[index];
 }
 
 //--------------------------------------------------------------------+
