@@ -2,6 +2,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "USBSerial.h"
+#include "BleSerial.h"
 
 void SystemClock_Config(void);
 void MX_GPIO_Init(void);
@@ -59,6 +60,33 @@ void StartBlinkTask(void *argument) {
 }
 
 //--------------------------------------------------------------------+
+//  BleSerial AT-Command Echo Task
+//--------------------------------------------------------------------+
+//  Demonstrates the non-blocking JDY‑23 bridge:
+//    - assemble incoming \n‑terminated lines via IRQ
+//    - echo back "OK: <command>" via DMA with semaphore blocking
+//--------------------------------------------------------------------+
+
+void StartBleTask(void *argument) {
+    (void)argument;
+
+    BleSerial::begin(57600);
+
+    char buf[BLE_MAX_CMD_LEN];
+
+    for (;;) {
+        if (BleSerial::commandAvailable()) {
+            BleSerial::getCommand(buf);
+
+            BleSerial::print("OK\r\n");
+        }
+
+        // Yield so other tasks (USB, Blink) get CPU time
+        vTaskDelay(pdMS_TO_TICKS(10));
+    }
+}
+
+//--------------------------------------------------------------------+
 //  FreeRTOS hooks
 //--------------------------------------------------------------------+
 
@@ -85,6 +113,7 @@ int main(void) {
 
     xTaskCreate(USBSerial::task, "USB", 256, NULL, configMAX_PRIORITIES - 1, NULL);
     xTaskCreate(StartBlinkTask, "Blink", 128, NULL, 1, NULL);
+    xTaskCreate(StartBleTask, "BLE", 256, NULL, 2, NULL);
 
     vTaskStartScheduler();
 
