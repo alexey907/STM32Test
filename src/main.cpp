@@ -40,7 +40,10 @@ void SystemClock_Config(void) {
 void UsbDeviceTask(void *argument) {
     (void)argument;
 
-    // 1. Arm the TinyUSB state machine FIRST so it is listening when Windows
+    // 1. Force FreeRTOS-compatible priority grouping (required by STM32 HAL)
+    HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
+
+    // 2. Arm the TinyUSB state machine FIRST so it is listening when Windows
     //    sends setup packets after the PA12 reconnect.
     HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
@@ -86,10 +89,10 @@ int main(void) {
     MX_GPIO_Init();
 
     // TinyUSB needs its own task to run tud_task()
-    xTaskCreate(UsbDeviceTask, "USB", 512, NULL, configMAX_PRIORITIES - 1, NULL);
+    xTaskCreate(UsbDeviceTask, "USB", 256, NULL, configMAX_PRIORITIES - 1, NULL);
 
     // Blink task
-    xTaskCreate(StartBlinkTask, "Blink", 256, NULL, 1, NULL);
+    xTaskCreate(StartBlinkTask, "Blink", 128, NULL, 1, NULL);
 
     vTaskStartScheduler();
 
@@ -131,8 +134,8 @@ uint8_t const *tud_descriptor_device_cb(void) {
         .bDeviceSubClass    = MISC_SUBCLASS_COMMON,
         .bDeviceProtocol    = MISC_PROTOCOL_IAD,
         .bMaxPacketSize0    = 64,
-        .idVendor           = 0xCAFE,
-        .idProduct          = 0x4001,
+        .idVendor           = 0x0483,  // STMicroelectronics
+        .idProduct          = 0x5740,  // Virtual COM Port
         .bcdDevice          = 0x0100,
         .iManufacturer      = 0x01,
         .iProduct           = 0x02,
