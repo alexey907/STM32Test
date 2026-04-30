@@ -10,8 +10,7 @@ extern "C" {
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-#define USBD_MAX_NUM_INTERFACES               1U
+#define USBD_MAX_NUM_INTERFACES               2U
 #define USBD_MAX_NUM_CONFIGURATION            1U
 #define USBD_MAX_STR_DESC_SIZ                 0x100U
 #define USBD_SUPPORT_USER_STRING_DESC         0U

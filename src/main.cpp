@@ -63,7 +63,7 @@ void StartBlinkTask(void *argument) {
     (void)argument;
     for(;;) {
         HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_2);
-        usb.println("LED toggled");
+        //usb.println("LED toggled");
         vTaskDelay(pdMS_TO_TICKS(1000));
     }
 }

@@ -7,33 +7,6 @@
 extern "C" {
 #endif
 
-/* ---------- USBD Configuration ---------- */
-#ifndef USBD_MAX_NUM_INTERFACES
-#define USBD_MAX_NUM_INTERFACES           1U
-#endif
-#ifndef USBD_MAX_NUM_CONFIGURATION
-#define USBD_MAX_NUM_CONFIGURATION        1U
-#endif
-#ifndef USBD_MAX_STR_DESC_SIZ
-#define USBD_MAX_STR_DESC_SIZ             0x100U
-#endif
-#ifndef USBD_SUPPORT_USER_STRING_DESC
-#define USBD_SUPPORT_USER_STRING_DESC     0U
-#endif
-#ifndef USBD_SELF_POWERED
-#define USBD_SELF_POWERED                 1U
-#endif
-#ifndef USBD_DEBUG_LEVEL
-#define USBD_DEBUG_LEVEL                  0U
-#endif
-
-/* Memory management macros (FreeRTOS heap or standard lib) */
-#include <stdlib.h>
-#include <string.h>
-#define USBD_malloc   malloc
-#define USBD_free     free
-#define USBD_memset   memset
-#define USBD_memcpy   memcpy
 
 #ifdef __cplusplus
 }

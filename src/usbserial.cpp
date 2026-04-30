@@ -22,91 +22,6 @@ static const uint8_t _dev_desc[18] = {
     0x01                        // bNumConfigurations
 };
 
-/* USB Configuration + Interface + Endpoint descriptors (CDC ACM) */
-static const uint8_t _cfg_desc[67] = {
-    /* Configuration */
-    0x09,                       // bLength
-    0x02,                       // bDescriptorType: Configuration
-    0x43, 0x00,                 // wTotalLength: 67
-    0x02,                       // bNumInterfaces
-    0x01,                       // bConfigurationValue
-    0x00,                       // iConfiguration
-    0xC0,                       // bmAttributes: Self-powered
-    0x32,                       // bMaxPower: 100mA
-
-    /* Communication Interface */
-    0x09,                       // bLength
-    0x04,                       // bDescriptorType: Interface
-    0x00,                       // bInterfaceNumber
-    0x00,                       // bAlternateSetting
-    0x01,                       // bNumEndpoints
-    0x02,                       // bInterfaceClass: CDC Communication
-    0x02,                       // bInterfaceSubClass: Abstract Control Model
-    0x01,                       // bInterfaceProtocol: AT Commands
-    0x00,                       // iInterface
-
-    /* Header Functional Descriptor */
-    0x05,                       // bLength
-    0x24,                       // bDescriptorType: CS_INTERFACE
-    0x00,                       // bDescriptorSubtype: Header
-    0x10, 0x01,                 // bcdCDC: 1.10
-
-    /* ACM Functional Descriptor */
-    0x04,                       // bLength
-    0x24,                       // bDescriptorType: CS_INTERFACE
-    0x02,                       // bDescriptorSubtype: ACM
-    0x02,                       // bmCapabilities: DTR|RTS
-
-    /* Union Functional Descriptor */
-    0x05,                       // bLength
-    0x24,                       // bDescriptorType: CS_INTERFACE
-    0x06,                       // bDescriptorSubtype: Union
-    0x00,                       // bControlInterface (IF 0)
-    0x01,                       // bSubordinateInterface (IF 1)
-
-    /* Call Management Functional Descriptor */
-    0x05,                       // bLength
-    0x24,                       // bDescriptorType: CS_INTERFACE
-    0x01,                       // bDescriptorSubtype: Call Mgmt
-    0x00,                       // bmCapabilities: no call mgmt
-    0x01,                       // bDataInterface: IF 1
-
-    /* Endpoint (Interrupt IN - notifications) */
-    0x07,                       // bLength
-    0x05,                       // bDescriptorType: Endpoint
-    0x82,                       // bEndpointAddress: EP2 IN
-    0x03,                       // bmAttributes: Interrupt
-    0x08, 0x00,                 // wMaxPacketSize: 8
-    0xFF,                       // bInterval: 255ms
-
-    /* Data Interface */
-    0x09,                       // bLength
-    0x04,                       // bDescriptorType: Interface
-    0x01,                       // bInterfaceNumber
-    0x00,                       // bAlternateSetting
-    0x02,                       // bNumEndpoints
-    0x0A,                       // bInterfaceClass: CDC Data
-    0x00,                       // bInterfaceSubClass
-    0x00,                       // bInterfaceProtocol
-    0x00,                       // iInterface
-
-    /* Endpoint (Bulk IN - TX to host) */
-    0x07,                       // bLength
-    0x05,                       // bDescriptorType: Endpoint
-    0x81,                       // bEndpointAddress: EP1 IN
-    0x02,                       // bmAttributes: Bulk
-    0x40, 0x00,                 // wMaxPacketSize: 64
-    0x00,                       // bInterval: N/A for Bulk
-
-    /* Endpoint (Bulk OUT - RX from host) */
-    0x07,                       // bLength
-    0x05,                       // bDescriptorType: Endpoint
-    0x01,                       // bEndpointAddress: EP1 OUT
-    0x02,                       // bmAttributes: Bulk
-    0x40, 0x00,                 // wMaxPacketSize: 64
-    0x00                        // bInterval: N/A for Bulk
-};
-
 /* String Descriptors ------------------------------------------------- */
 
 static const uint8_t _lang_desc[] = {
@@ -116,31 +31,31 @@ static const uint8_t _lang_desc[] = {
 };
 
 static const uint8_t _mfc_desc[] = {
-    10,                         // bLength
+    12,                         // bLength (5 chars * 2 + 2 header = 12)
     0x03,                       // bDescriptorType: String
     'S', 0, 'T', 0, 'M', 0, '3', 0, '2', 0
 };
 
 static const uint8_t _prod_desc[] = {
-    18,                         // bLength
+    22,                         // bLength (10 chars * 2 + 2 header = 22)
     0x03,                       // bDescriptorType: String
     'U', 0, 'S', 0, 'B', 0, ' ', 0, 'S', 0, 'e', 0, 'r', 0, 'i', 0, 'a', 0, 'l', 0
 };
 
 static const uint8_t _serial_desc[] = {
-    8,                          // bLength
+    10,                         // bLength (4 chars * 2 + 2 header = 10)
     0x03,                       // bDescriptorType: String
     '0', 0, '0', 0, '0', 0, '1', 0
 };
 
 static const uint8_t _cfg_str_desc[] = {
-    20,                         // bLength
+    22,                         // bLength (10 chars * 2 + 2 header = 22)
     0x03,                       // bDescriptorType: String
     'C', 0, 'D', 0, 'C', 0, ' ', 0, 'C', 0, 'o', 0, 'n', 0, 'f', 0, 'i', 0, 'g', 0
 };
 
 static const uint8_t _if_str_desc[] = {
-    26,                         // bLength
+    28,                         // bLength (13 chars * 2 + 2 header = 28)
     0x03,                       // bDescriptorType: String
     'C', 0, 'D', 0, 'C', 0, ' ', 0,
     'I', 0, 'n', 0, 't', 0, 'e', 0, 'r', 0, 'f', 0, 'a', 0, 'c', 0, 'e', 0
@@ -536,6 +451,6 @@ void USBD_LL_Delay(uint32_t Delay) {
  * USB interrupt handler
  * ================================================================== */
 
-extern "C" void USB_LP_IRQHandler(void) {
+extern "C" void USB_LP_CAN1_RX0_IRQHandler(void) {
     HAL_PCD_IRQHandler(&_hpcd);
 }
