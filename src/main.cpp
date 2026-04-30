@@ -125,7 +125,7 @@ static const char *string_desc_arr[] = {
 };
 
 // Device descriptor
-uint8_t const *tud_descriptor_device_cb(void) {
+extern "C" uint8_t const *tud_descriptor_device_cb(void) {
     static const tusb_desc_device_t desc_device = {
         .bLength            = sizeof(tusb_desc_device_t),
         .bDescriptorType    = TUSB_DESC_DEVICE,
@@ -146,7 +146,7 @@ uint8_t const *tud_descriptor_device_cb(void) {
 }
 
 // Configuration descriptor (CDC)
-uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
+extern "C" uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
     (void)index;
     static const uint8_t desc_configuration[] = {
         // Config number, interface count, string index, total length, attribute, power in mA
@@ -159,7 +159,7 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
 }
 
 // String descriptor
-uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
+extern "C" uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     (void)langid;
     static uint16_t str_desc_buf[32];
     uint8_t count;
