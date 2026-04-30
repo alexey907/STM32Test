@@ -377,8 +377,11 @@ void UsbSerial::begin() {
     gpio.Pull  = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_LOW;
     HAL_GPIO_Init(GPIOA, &gpio);
-    /* Pull PA12 HIGH to signal Full-Speed device to host */
-    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_SET);
+    /* Pull PA12 LOW to enable USB DP pull-up (P-channel MOSFET circuit on BluePill) */
+    HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
+    
+    /* Small delay for host to detect pull-up */
+    HAL_Delay(100);
     
     /* ---- Step 3: Configure PCD (USB peripheral) ---- */
     _hpcd.Instance = USB;
