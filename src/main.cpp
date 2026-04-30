@@ -28,6 +28,12 @@ void SystemClock_Config(void) {
     RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV2;
     RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV1;
     HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_2);
+
+    // USB clock: 72MHz PLL / 1.5 = 48MHz required for USB Full-Speed
+    RCC_PeriphCLKInitTypeDef PeriphClkInit = {0};
+    PeriphClkInit.PeriphClockSelection = RCC_PERIPHCLK_USB;
+    PeriphClkInit.UsbClockSelection = RCC_USBCLKSOURCE_PLL_DIV1_5;
+    HAL_RCCEx_PeriphCLKConfig(&PeriphClkInit);
 }
 
 // TinyUSB Background Task — processes USB state machine
@@ -122,7 +128,7 @@ uint8_t const *tud_descriptor_configuration_cb(uint8_t index) {
     (void)index;
     static const uint8_t desc_configuration[] = {
         // Config number, interface count, string index, total length, attribute, power in mA
-        TUD_CONFIG_DESCRIPTOR(1, 2, 0, TUD_CDC_DESC_LEN,
+        TUD_CONFIG_DESCRIPTOR(1, 2, 0, TUD_CONFIG_DESC_LEN + TUD_CDC_DESC_LEN,
                               TUSB_DESC_CONFIG_ATT_REMOTE_WAKEUP, 100),
         // Interface number, string index, EP notification address/size, EP data address (out, in) and size
         TUD_CDC_DESCRIPTOR(0, 4, 0x81, 8, 0x02, 0x82, 64),
@@ -156,6 +162,11 @@ uint16_t const *tud_descriptor_string_cb(uint8_t index, uint16_t langid) {
     str_desc_buf[0] = (uint16_t)((uint16_t)(TUSB_DESC_STRING << 8) | (uint16_t)(2 * count + 2));
 
     return str_desc_buf;
+}
+
+// STM32 USB interrupt handler — routes hardware IRQ into TinyUSB
+extern "C" void USB_LP_CAN1_RX0_IRQHandler(void) {
+    tud_int_handler(0);
 }
 
 void MX_GPIO_Init(void) {
