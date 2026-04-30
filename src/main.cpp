@@ -43,7 +43,10 @@ void UsbDeviceTask(void *argument) {
     // 1. Force FreeRTOS-compatible priority grouping (required by STM32 HAL)
     HAL_NVIC_SetPriorityGrouping(NVIC_PRIORITYGROUP_4);
 
-    // 2. Arm the TinyUSB state machine FIRST so it is listening when Windows
+    // 2. Power on the USB hardware peripheral clock
+    __HAL_RCC_USB_CLK_ENABLE();
+
+    // 3. Arm the TinyUSB state machine FIRST so it is listening when Windows
     //    sends setup packets after the PA12 reconnect.
     HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
     HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
