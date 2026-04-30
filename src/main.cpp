@@ -57,6 +57,7 @@ void UsbDeviceTask(void *argument) {
     // 2. Lower USB interrupt priority so FreeRTOS API calls are legal inside ISR.
     //    STM32 NVIC defaults to priority 0 (max); FreeRTOS requires ≤ configMAX_SYSCALL_INTERRUPT_PRIORITY (5).
     HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
 
     // 3. Initialize TinyUSB stack
     tusb_init();
