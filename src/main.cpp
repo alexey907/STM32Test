@@ -40,30 +40,28 @@ void SystemClock_Config(void) {
 void UsbDeviceTask(void *argument) {
     (void)argument;
 
-    // 1. Force Windows to re-enumerate — Blue Pill has a hardwired D+ pull-up.
-    //    Driving PA12 low for 10ms drops the USB connection so the host sees a
-    //    clean disconnect, then releasing it starts a fresh handshake.
+    // 1. Arm the TinyUSB state machine FIRST so it is listening when Windows
+    //    sends setup packets after the PA12 reconnect.
+    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
+    HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
+    tusb_init();
+
+    // 2. Force Windows to re-enumerate — Blue Pill has a hardwired 1.5k
+    //    pull-up on PA12. Hold PA12 low for 100ms (10ms is too short for
+    //    Windows to reliably detect), then release to start a fresh handshake.
     __HAL_RCC_GPIOA_CLK_ENABLE();
     GPIO_InitTypeDef gpio = {0};
     gpio.Pin = GPIO_PIN_12;
     gpio.Mode = GPIO_MODE_OUTPUT_PP;
     HAL_GPIO_Init(GPIOA, &gpio);
     HAL_GPIO_WritePin(GPIOA, GPIO_PIN_12, GPIO_PIN_RESET);
-    vTaskDelay(pdMS_TO_TICKS(10));
+    vTaskDelay(pdMS_TO_TICKS(100));
     gpio.Mode = GPIO_MODE_INPUT;   // Release D+ back to high-Z
     HAL_GPIO_Init(GPIOA, &gpio);
-    vTaskDelay(pdMS_TO_TICKS(50));
 
-    // 2. Lower USB interrupt priority so FreeRTOS API calls are legal inside ISR.
-    //    STM32 NVIC defaults to priority 0 (max); FreeRTOS requires ≤ configMAX_SYSCALL_INTERRUPT_PRIORITY (5).
-    HAL_NVIC_SetPriority(USB_LP_CAN1_RX0_IRQn, 5, 0);
-    HAL_NVIC_EnableIRQ(USB_LP_CAN1_RX0_IRQn);
-
-    // 3. Initialize TinyUSB stack
-    tusb_init();
-
+    // 3. Process the TinyUSB event queue — tud_task() blocks until events arrive
     for (;;) {
-        tud_task();   // tud_task_ext(INFINITE, false) — blocks until event arrives
+        tud_task();
     }
 }
 
