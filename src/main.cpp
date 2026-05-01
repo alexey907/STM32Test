@@ -73,7 +73,7 @@ void StartBlinkTask(void *argument) {
 void TelemetryTask(void *argument) {
     (void)argument;
 
-    BleSerial::begin(57600);
+    BleSerial::begin(BlePort::UART1, 115200);
 
     for (;;) {
         // Block until ISR signals a complete line has arrived

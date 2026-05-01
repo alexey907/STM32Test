@@ -9,8 +9,12 @@
 //  Static member definitions  (private)
 //--------------------------------------------------------------------+
 
-UART_HandleTypeDef   BleSerial::_huart1;
-DMA_HandleTypeDef    BleSerial::_hdma_usart1_tx;
+UART_HandleTypeDef   BleSerial::_huart;
+DMA_HandleTypeDef    BleSerial::_hdma_tx;
+
+BlePort              BleSerial::_activePort    = BlePort::UART1;
+USART_TypeDef       *BleSerial::_usartInstance = USART1;
+DMA_Channel_TypeDef *BleSerial::_dmaChannel    = DMA1_Channel4;
 
 SemaphoreHandle_t    BleSerial::_tx_semaphore = NULL;
 
@@ -28,43 +32,84 @@ SemaphoreHandle_t    BleSerial::rx_semaphore = NULL;
 //  Public API
 //--------------------------------------------------------------------+
 
-void BleSerial::begin(uint32_t baud) {
+void BleSerial::begin(BlePort port, uint32_t baud) {
+    _activePort = port;
+
     // ---- FreeRTOS primitives ----
-    // Binary semaphore for TX: start "given" so first TX is unblocked
     _tx_semaphore = xSemaphoreCreateBinary();
     configASSERT(_tx_semaphore != NULL);
     xSemaphoreGive(_tx_semaphore);
 
-    // Binary semaphore for RX: starts empty (task blocks until ISR gives)
     rx_semaphore = xSemaphoreCreateBinary();
     configASSERT(rx_semaphore != NULL);
 
-    // ---- Clocks ----
-    __HAL_RCC_USART1_CLK_ENABLE();
-    __HAL_RCC_GPIOA_CLK_ENABLE();
+    // ---- Select hardware resources per port ----
+    GPIO_TypeDef    *gpioPort  = NULL;
+    uint16_t         txPin     = 0;
+    uint16_t         rxPin     = 0;
+    IRQn_Type        usartIrq  = USART1_IRQn;
+    IRQn_Type        dmaIrq    = DMA1_Channel4_IRQn;
+
+    switch (port) {
+    case BlePort::UART1:
+        _usartInstance = USART1;
+        _dmaChannel    = DMA1_Channel4;
+        gpioPort       = GPIOA;
+        txPin          = GPIO_PIN_9;
+        rxPin          = GPIO_PIN_10;
+        usartIrq       = USART1_IRQn;
+        dmaIrq         = DMA1_Channel4_IRQn;
+        __HAL_RCC_USART1_CLK_ENABLE();
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+        break;
+
+    case BlePort::UART2:
+        _usartInstance = USART2;
+        _dmaChannel    = DMA1_Channel7;
+        gpioPort       = GPIOA;
+        txPin          = GPIO_PIN_2;
+        rxPin          = GPIO_PIN_3;
+        usartIrq       = USART2_IRQn;
+        dmaIrq         = DMA1_Channel7_IRQn;
+        __HAL_RCC_USART2_CLK_ENABLE();
+        __HAL_RCC_GPIOA_CLK_ENABLE();
+        break;
+
+    case BlePort::UART3:
+        _usartInstance = USART3;
+        _dmaChannel    = DMA1_Channel2;
+        gpioPort       = GPIOB;
+        txPin          = GPIO_PIN_10;
+        rxPin          = GPIO_PIN_11;
+        usartIrq       = USART3_IRQn;
+        dmaIrq         = DMA1_Channel2_IRQn;
+        __HAL_RCC_USART3_CLK_ENABLE();
+        __HAL_RCC_GPIOB_CLK_ENABLE();
+        break;
+    }
+
+    // ---- Clocks (DMA is common) ----
     __HAL_RCC_DMA1_CLK_ENABLE();
 
     // ---- GPIO ----
-    // PA9  = TX  : Alternate Function Push-Pull
-    // PA10 = RX  : Input Floating
     GPIO_InitTypeDef gpio = {0};
     gpio.Mode  = GPIO_MODE_AF_PP;
     gpio.Pull  = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_HIGH;
-    gpio.Pin   = GPIO_PIN_9;
-    HAL_GPIO_Init(GPIOA, &gpio);
+    gpio.Pin   = txPin;
+    HAL_GPIO_Init(gpioPort, &gpio);
 
     gpio.Mode  = GPIO_MODE_INPUT;
     gpio.Pull  = GPIO_NOPULL;
     gpio.Speed = GPIO_SPEED_FREQ_HIGH;
-    gpio.Pin   = GPIO_PIN_10;
-    HAL_GPIO_Init(GPIOA, &gpio);
+    gpio.Pin   = rxPin;
+    HAL_GPIO_Init(gpioPort, &gpio);
 
     // ---- HAL peripheral init ----
     {
-        DMA_HandleTypeDef *hdma = &_hdma_usart1_tx;
+        DMA_HandleTypeDef *hdma = &_hdma_tx;
 
-        hdma->Instance = DMA1_Channel4;
+        hdma->Instance = _dmaChannel;
         hdma->Init.Direction           = DMA_MEMORY_TO_PERIPH;
         hdma->Init.PeriphInc           = DMA_PINC_DISABLE;
         hdma->Init.MemInc              = DMA_MINC_ENABLE;
@@ -73,11 +118,11 @@ void BleSerial::begin(uint32_t baud) {
         hdma->Init.Mode                = DMA_NORMAL;
         hdma->Init.Priority            = DMA_PRIORITY_LOW;
         HAL_DMA_Init(hdma);
-        __HAL_LINKDMA(&_huart1, hdmatx, *hdma);
+        __HAL_LINKDMA(&_huart, hdmatx, *hdma);
     }
     {
-        UART_HandleTypeDef *h = &_huart1;
-        h->Instance          = USART1;
+        UART_HandleTypeDef *h = &_huart;
+        h->Instance          = _usartInstance;
         h->Init.BaudRate     = baud;
         h->Init.WordLength   = UART_WORDLENGTH_8B;
         h->Init.StopBits     = UART_STOPBITS_1;
@@ -89,32 +134,52 @@ void BleSerial::begin(uint32_t baud) {
     }
 
     // ---- NVIC priorities (must be >= configLIBRARY_MAX_SYSCALL_INTERRUPT_PRIORITY) ----
-    HAL_NVIC_SetPriority(USART1_IRQn,           5, 0);
-    HAL_NVIC_SetPriority(DMA1_Channel4_IRQn,    5, 0);
-    HAL_NVIC_EnableIRQ(USART1_IRQn);
-    HAL_NVIC_EnableIRQ(DMA1_Channel4_IRQn);
+    HAL_NVIC_SetPriority(usartIrq,  5, 0);
+    HAL_NVIC_SetPriority(dmaIrq,    5, 0);
+    HAL_NVIC_EnableIRQ(usartIrq);
+    HAL_NVIC_EnableIRQ(dmaIrq);
 
     // ---- Arm the first RX interrupt ----
-    HAL_UART_Receive_IT(&_huart1, &_rx_byte, 1);
+    HAL_UART_Receive_IT(&_huart, &_rx_byte, 1);
 }
 
 void BleSerial::print(const char *str) {
-    // Block until previous DMA transfer completes
     xSemaphoreTake(_tx_semaphore, portMAX_DELAY);
-
-    HAL_UART_Transmit_DMA(&_huart1, (uint8_t *)str, (uint16_t)strnlen(str, 256));
+    HAL_UART_Transmit_DMA(&_huart, (uint8_t *)str, (uint16_t)strnlen(str, 256));
 }
 
 //--------------------------------------------------------------------+
-//  extern "C" IRQ handlers – route to HAL
+//  extern "C" IRQ handlers – route to HAL for the active port
 //--------------------------------------------------------------------+
 
 extern "C" void USART1_IRQHandler(void) {
-    HAL_UART_IRQHandler(&BleSerial::_huart1);
+    if (BleSerial::_activePort == BlePort::UART1)
+        HAL_UART_IRQHandler(&BleSerial::_huart);
+}
+
+extern "C" void USART2_IRQHandler(void) {
+    if (BleSerial::_activePort == BlePort::UART2)
+        HAL_UART_IRQHandler(&BleSerial::_huart);
+}
+
+extern "C" void USART3_IRQHandler(void) {
+    if (BleSerial::_activePort == BlePort::UART3)
+        HAL_UART_IRQHandler(&BleSerial::_huart);
+}
+
+extern "C" void DMA1_Channel2_IRQHandler(void) {
+    if (BleSerial::_activePort == BlePort::UART3)
+        HAL_DMA_IRQHandler(&BleSerial::_hdma_tx);
 }
 
 extern "C" void DMA1_Channel4_IRQHandler(void) {
-    HAL_DMA_IRQHandler(&BleSerial::_hdma_usart1_tx);
+    if (BleSerial::_activePort == BlePort::UART1)
+        HAL_DMA_IRQHandler(&BleSerial::_hdma_tx);
+}
+
+extern "C" void DMA1_Channel7_IRQHandler(void) {
+    if (BleSerial::_activePort == BlePort::UART2)
+        HAL_DMA_IRQHandler(&BleSerial::_hdma_tx);
 }
 
 //--------------------------------------------------------------------+
@@ -122,35 +187,29 @@ extern "C" void DMA1_Channel4_IRQHandler(void) {
 //--------------------------------------------------------------------+
 
 extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance != USART1) return;
+    if (huart->Instance != BleSerial::_usartInstance) return;
 
     BaseType_t woken = pdFALSE;
 
     if (BleSerial::_rx_byte == '\n' || BleSerial::_rx_byte == '\r') {
-        // Line terminator – null-terminate directly in shared cmd_buffer
         if (BleSerial::_rx_idx > 0) {
             BleSerial::cmd_buffer[BleSerial::_rx_idx] = '\0';
             BleSerial::_rx_idx = 0;
-
-            // Wake the blocked consumer task
             xSemaphoreGiveFromISR(BleSerial::rx_semaphore, &woken);
         }
     } else {
-        // Regular character – append to shared cmd_buffer if space remains
         if (BleSerial::_rx_idx < (BLE_MAX_CMD_LEN - 1)) {
             BleSerial::cmd_buffer[BleSerial::_rx_idx] = (char)BleSerial::_rx_byte;
             BleSerial::_rx_idx++;
         }
     }
 
-    // Re-arm the one-byte receive interrupt
-    HAL_UART_Receive_IT(&BleSerial::_huart1, &BleSerial::_rx_byte, 1);
-
+    HAL_UART_Receive_IT(&BleSerial::_huart, &BleSerial::_rx_byte, 1);
     portYIELD_FROM_ISR(woken);
 }
 
 extern "C" void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
-    if (huart->Instance != USART1) return;
+    if (huart->Instance != BleSerial::_usartInstance) return;
 
     BaseType_t woken = pdFALSE;
     xSemaphoreGiveFromISR(BleSerial::_tx_semaphore, &woken);
