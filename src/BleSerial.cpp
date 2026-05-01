@@ -102,7 +102,7 @@ void BleSerial::print(const char *str) {
     // Block until previous DMA transfer completes
     xSemaphoreTake(_tx_semaphore, portMAX_DELAY);
 
-    HAL_UART_Transmit_DMA(&_huart1, (uint8_t *)str, (uint16_t)strlen(str));
+    HAL_UART_Transmit_DMA(&_huart1, (uint8_t *)str, (uint16_t)strnlen(str, 256));
 }
 
 //--------------------------------------------------------------------+
