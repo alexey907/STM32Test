@@ -11,42 +11,29 @@
  */
 #define BLE_MAX_CMD_LEN   64
 
-/**
- * @brief UART port selector for the JDY‑23 Bluetooth module.
- */
-enum class BlePort : uint8_t {
-    UART1 = 1,
-    UART2 = 2,
-    UART3 = 3,
-};
-
-// Forward-declare the HAL callbacks and all IRQ handlers with C linkage
-// so that the friend declarations inside BleSerial match the extern "C"
+// Forward-declare the HAL callbacks and IRQ handlers with C linkage so
+// that the friend declarations inside BleSerial match the extern "C"
 // definitions in BleSerial.cpp.
 extern "C" {
     void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
     void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
     void USART1_IRQHandler(void);
-    void USART2_IRQHandler(void);
-    void USART3_IRQHandler(void);
-    void DMA1_Channel2_IRQHandler(void);
     void DMA1_Channel4_IRQHandler(void);
-    void DMA1_Channel7_IRQHandler(void);
 }
 
 /**
  * @brief Non-blocking UART bridge for the JDY‑23 AT-command Bluetooth module.
  *
- * Supports USART1, USART2, or USART3 — selected at init time via begin().
+ * Hardware : STM32F103 – USART1  (PA9 = TX,  PA10 = RX)
  *
  * RX strategy : Interrupt‑driven, one byte at a time.
- *               Characters are assembled directly into cmd_buffer[].
- *               The FreeRTOS consumer task is woken via rx_semaphore
- *               when a \n- or \r‑terminated string arrives.
+ *               Characters are assembled into a line buffer.
+ *               The FreeRTOS consumer task is only woken when a complete
+ *               \n- or \r‑terminated string arrives.
  *
- * TX strategy : DMA‑driven.
- *               A FreeRTOS binary semaphore blocks the calling task
- *               until the DMA transfer finishes.
+ * TX strategy : DMA‑driven  (DMA1 Channel 4).
+ *               A FreeRTOS binary semaphore blocks the calling task until
+ *               the DMA transfer finishes.
  *
  * All members are static – the class is a namespace with private state.
  */
@@ -60,12 +47,11 @@ public:
      * @brief  Initialise the USART, DMA, FreeRTOS primitives and arm
      *         the first RX interrupt.
      *
-     * @param port  UART instance to use (UART1, UART2, or UART3).
      * @param baud  Baudrate for the JDY‑23  (e.g. 57600).
      *
      * Must be called exactly once, before any other method.
      */
-    static void begin(BlePort port, uint32_t baud);
+    static void begin(uint32_t baud);
 
     /**
      * @brief  Blocking transmit of a NUL‑terminated string.
@@ -86,15 +72,8 @@ private:
     //------------------------------------------------------------------
     //  Hardware handles  (initialised by begin())
     //------------------------------------------------------------------
-    static UART_HandleTypeDef   _huart;
-    static DMA_HandleTypeDef    _hdma_tx;
-
-    //------------------------------------------------------------------
-    //  Active port tracking  (set by begin())
-    //------------------------------------------------------------------
-    static BlePort              _activePort;
-    static USART_TypeDef       *_usartInstance;
-    static DMA_Channel_TypeDef *_dmaChannel;
+    static UART_HandleTypeDef   _huart1;
+    static DMA_HandleTypeDef    _hdma_usart1_tx;
 
     //------------------------------------------------------------------
     //  FreeRTOS primitives
@@ -115,9 +94,5 @@ private:
     friend void ::HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart);
     friend void ::HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart);
     friend void ::USART1_IRQHandler(void);
-    friend void ::USART2_IRQHandler(void);
-    friend void ::USART3_IRQHandler(void);
-    friend void ::DMA1_Channel2_IRQHandler(void);
     friend void ::DMA1_Channel4_IRQHandler(void);
-    friend void ::DMA1_Channel7_IRQHandler(void);
 };
