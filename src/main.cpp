@@ -1,3 +1,4 @@
+#include <cstring>
 #include "stm32f1xx_hal.h"
 #include "FreeRTOS.h"
 #include "task.h"
@@ -60,29 +61,31 @@ void StartBlinkTask(void *argument) {
 }
 
 //--------------------------------------------------------------------+
-//  BleSerial AT-Command Echo Task
+//  BleSerial Ping-Pong Command Task
 //--------------------------------------------------------------------+
-//  Demonstrates the non-blocking JDY‑23 bridge:
-//    - assemble incoming \n‑terminated lines via IRQ
-//    - echo back "OK: <command>" via DMA with semaphore blocking
+//  Demonstrates the zero-copy JDY‑23 bridge:
+//    - Task blocks at 0% CPU until the ISR gives rx_semaphore
+//    - Reads the incoming command directly from BleSerial::cmd_buffer
+//    - Responds via DMA TX (ping-pong protocol guarantees cmd_buffer
+//      won't be overwritten until after the response is sent)
 //--------------------------------------------------------------------+
 
-void StartBleTask(void *argument) {
+void TelemetryTask(void *argument) {
     (void)argument;
 
     BleSerial::begin(57600);
 
-    char buf[BLE_MAX_CMD_LEN];
-
     for (;;) {
-        if (BleSerial::commandAvailable()) {
-            BleSerial::getCommand(buf);
+        // Block until ISR signals a complete line has arrived
+        if (xSemaphoreTake(BleSerial::rx_semaphore, portMAX_DELAY) == pdTRUE) {
 
-            BleSerial::print("OK\r\n");
+            // Read string directly from the static shared buffer
+            if (strncmp(BleSerial::cmd_buffer, "AT+PING", 7) == 0) {
+                BleSerial::print("OK\r\n");
+            } else {
+                BleSerial::print("ERROR\r\n");
+            }
         }
-
-        // Yield so other tasks (USB, Blink) get CPU time
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 
@@ -113,7 +116,7 @@ int main(void) {
 
     xTaskCreate(USBSerial::task, "USB", 256, NULL, configMAX_PRIORITIES - 1, NULL);
     xTaskCreate(StartBlinkTask, "Blink", 128, NULL, 1, NULL);
-    xTaskCreate(StartBleTask, "BLE", 256, NULL, 2, NULL);
+    xTaskCreate(TelemetryTask, "Telemetry", 256, NULL, 2, NULL);
 
     vTaskStartScheduler();
 

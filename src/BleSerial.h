@@ -3,7 +3,6 @@
 #include <cstdint>
 #include "stm32f1xx_hal.h"
 #include "FreeRTOS.h"
-#include "queue.h"
 #include "semphr.h"
 
 /**
@@ -63,24 +62,11 @@ public:
      */
     static void print(const char *str);
 
-    /**
-     * @brief  Non‑blocking poll: has a complete line arrived?
-     *
-     * @retval true   One or more terminated lines are waiting in the queue.
-     * @retval false  No complete line is available yet.
-     */
-    static bool commandAvailable();
-
-    /**
-     * @brief  Dequeue the oldest completed line.
-     *
-     * @param out_str  Caller‑supplied buffer of at least BLE_MAX_CMD_LEN
-     *                 bytes.  The dequeued string is NUL‑terminated.
-     *
-     * @note  Call commandAvailable() before getCommand() – this function
-     *        blocks indefinitely if the queue is empty.
-     */
-    static void getCommand(char *out_str);
+    //------------------------------------------------------------------
+    //  Shared RX state  (ISR writes, task reads after rx_semaphore)
+    //------------------------------------------------------------------
+    static char                 cmd_buffer[BLE_MAX_CMD_LEN];
+    static SemaphoreHandle_t    rx_semaphore;    ///< Binary semaphore – given by ISR
 
 private:
     //------------------------------------------------------------------
@@ -92,14 +78,12 @@ private:
     //------------------------------------------------------------------
     //  FreeRTOS primitives
     //------------------------------------------------------------------
-    static QueueHandle_t        _cmd_queue;      ///< Holds BLE_MAX_CMD_LEN‑byte strings
     static SemaphoreHandle_t    _tx_semaphore;   ///< Binary semaphore – taken during DMA
 
     //------------------------------------------------------------------
     //  RX assembly state  (updated from ISR)
     //------------------------------------------------------------------
     static uint8_t              _rx_byte;        ///< Single‑byte receive target for HAL
-    static char                 _rx_buffer[BLE_MAX_CMD_LEN];
     static uint8_t              _rx_idx;
 
     //------------------------------------------------------------------

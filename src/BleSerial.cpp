@@ -3,22 +3,26 @@
 #include <cstring>
 #include "stm32f1xx_hal.h"
 #include "FreeRTOS.h"
-#include "queue.h"
 #include "semphr.h"
 
 //--------------------------------------------------------------------+
-//  Static member definitions
+//  Static member definitions  (private)
 //--------------------------------------------------------------------+
 
 UART_HandleTypeDef   BleSerial::_huart1;
 DMA_HandleTypeDef    BleSerial::_hdma_usart1_tx;
 
-QueueHandle_t        BleSerial::_cmd_queue    = NULL;
 SemaphoreHandle_t    BleSerial::_tx_semaphore = NULL;
 
 uint8_t              BleSerial::_rx_byte = 0;
-char                 BleSerial::_rx_buffer[BLE_MAX_CMD_LEN] = {0};
 uint8_t              BleSerial::_rx_idx  = 0;
+
+//--------------------------------------------------------------------+
+//  Static member definitions  (public – shared with app task)
+//--------------------------------------------------------------------+
+
+char                 BleSerial::cmd_buffer[BLE_MAX_CMD_LEN] = {0};
+SemaphoreHandle_t    BleSerial::rx_semaphore = NULL;
 
 //--------------------------------------------------------------------+
 //  Public API
@@ -26,14 +30,14 @@ uint8_t              BleSerial::_rx_idx  = 0;
 
 void BleSerial::begin(uint32_t baud) {
     // ---- FreeRTOS primitives ----
-    // Queue: 5 slots, each BLE_MAX_CMD_LEN bytes (holds complete strings)
-    _cmd_queue = xQueueCreate(5, BLE_MAX_CMD_LEN);
-    configASSERT(_cmd_queue != NULL);
-
-    // Binary semaphore: start "given" so first TX is unblocked
+    // Binary semaphore for TX: start "given" so first TX is unblocked
     _tx_semaphore = xSemaphoreCreateBinary();
     configASSERT(_tx_semaphore != NULL);
     xSemaphoreGive(_tx_semaphore);
+
+    // Binary semaphore for RX: starts empty (task blocks until ISR gives)
+    rx_semaphore = xSemaphoreCreateBinary();
+    configASSERT(rx_semaphore != NULL);
 
     // ---- Clocks ----
     __HAL_RCC_USART1_CLK_ENABLE();
@@ -101,15 +105,6 @@ void BleSerial::print(const char *str) {
     HAL_UART_Transmit_DMA(&_huart1, (uint8_t *)str, (uint16_t)strlen(str));
 }
 
-bool BleSerial::commandAvailable() {
-    return uxQueueMessagesWaiting(_cmd_queue) > 0;
-}
-
-void BleSerial::getCommand(char *out_str) {
-    // Block until a line is available
-    xQueueReceive(_cmd_queue, out_str, portMAX_DELAY);
-}
-
 //--------------------------------------------------------------------+
 //  extern "C" IRQ handlers – route to HAL
 //--------------------------------------------------------------------+
@@ -125,10 +120,6 @@ extern "C" void DMA1_Channel4_IRQHandler(void) {
 //--------------------------------------------------------------------+
 //  extern "C" HAL callbacks  (ISR context)
 //--------------------------------------------------------------------+
-//  These MUST have C linkage so the linker resolves the symbol that
-//  the HAL (weak) default expects.  The friends declared in BleSerial.h
-//  grant these free functions access to the private static members.
-//--------------------------------------------------------------------+
 
 extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     if (huart->Instance != USART1) return;
@@ -136,16 +127,18 @@ extern "C" void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart) {
     BaseType_t woken = pdFALSE;
 
     if (BleSerial::_rx_byte == '\n' || BleSerial::_rx_byte == '\r') {
-        // Line terminator – push completed line into queue
+        // Line terminator – null-terminate directly in shared cmd_buffer
         if (BleSerial::_rx_idx > 0) {
-            BleSerial::_rx_buffer[BleSerial::_rx_idx] = '\0';
-            xQueueSendFromISR(BleSerial::_cmd_queue, BleSerial::_rx_buffer, &woken);
+            BleSerial::cmd_buffer[BleSerial::_rx_idx] = '\0';
             BleSerial::_rx_idx = 0;
+
+            // Wake the blocked consumer task
+            xSemaphoreGiveFromISR(BleSerial::rx_semaphore, &woken);
         }
     } else {
-        // Regular character – append to buffer if space remains
+        // Regular character – append to shared cmd_buffer if space remains
         if (BleSerial::_rx_idx < (BLE_MAX_CMD_LEN - 1)) {
-            BleSerial::_rx_buffer[BleSerial::_rx_idx] = (char)BleSerial::_rx_byte;
+            BleSerial::cmd_buffer[BleSerial::_rx_idx] = (char)BleSerial::_rx_byte;
             BleSerial::_rx_idx++;
         }
     }
